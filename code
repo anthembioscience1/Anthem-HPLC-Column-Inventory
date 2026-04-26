@@ -1,0 +1,737 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Package, 
+  History, 
+  Settings, 
+  Users, 
+  PlusCircle, 
+  Trash2, 
+  Key, 
+  Printer,
+  ChevronRight,
+  UserPlus,
+  X,
+  LogOut,
+  Lock,
+  Search,
+  RotateCcw,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Hash,
+  Layers,
+  Edit3,
+  Check,
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown,
+  FileText,
+  CalendarDays,
+  Filter
+} from 'lucide-react';
+
+/**
+ * MOCK DATA INITIALIZATION
+ */
+const initialColumns = [
+  { id: 'COL-001', description: 'C18 Reverse Phase', partNo: 'PN-9982', serialNo: 'SN-10293', status: 'Available', issuedTo: null, issuedDate: null, expectedReturn: null, issuedBy: null },
+  { id: 'COL-002', description: 'HILIC Column', partNo: 'PN-4432', serialNo: 'SN-88273', status: 'Issued', issuedTo: 'John Doe', issuedDate: '2023-10-25', expectedReturn: '2023-10-30', issuedBy: 'admin' },
+  { id: 'COL-003', description: 'Silica Gel 60', partNo: 'PN-1122', serialNo: 'SN-55432', status: 'Available', issuedTo: null, issuedDate: null, expectedReturn: null, issuedBy: null },
+  { id: 'COL-004', description: 'Chiralpak AD-H', partNo: 'PN-7765', serialNo: 'SN-99001', status: 'Available', issuedTo: null, issuedDate: null, expectedReturn: null, issuedBy: null },
+];
+
+const initialUsers = [
+  { userId: 'Thippesh GM', userName: 'AT008', password: 'Shreyank@2019', role: 'admin' },
+  { userId: 'jdoe', userName: 'John Doe', password: 'user456', role: 'user' },
+];
+
+const initialLogs = [
+  { id: 1, action: 'System Init', detail: 'Application loaded', timestamp: new Date() }
+];
+
+export default function App() {
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ userId: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+
+  // App State
+  const [view, setView] = useState('inventory'); 
+  const [columns, setColumns] = useState(initialColumns);
+  const [users, setUsers] = useState(initialUsers);
+  const [logs, setLogs] = useState(initialLogs);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Visibility & Sorting State
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
+  
+  // Audit Filter State
+  const [auditFilter, setAuditFilter] = useState('all'); // all, today, week, month
+  
+  // Modals / Confirmation States
+  const [confirmModal, setConfirmModal] = useState(null); 
+  const [resetPasswordModal, setResetPasswordModal] = useState(null); 
+  const [editColModal, setEditColModal] = useState(null); 
+  
+  // Form States
+  const [newCol, setNewCol] = useState({ id: '', desc: '', part: '', serial: '' });
+  const [newUser, setNewUser] = useState({ id: '', name: '', pass: '' });
+  const [resetPassValue, setResetPassValue] = useState('');
+  
+  // Issue Data State
+  const [issueData, setIssueData] = useState({ 
+    colId: '', 
+    userId: '', 
+    issuedDate: new Date().toISOString().split('T')[0], 
+    returnDate: '' 
+  });
+
+  // --------------------------------------------------------------------------
+  // LOGIC
+  // --------------------------------------------------------------------------
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const user = users.find(u => u.userId === loginForm.userId && u.password === loginForm.password);
+    if (user) {
+      setIsAuthenticated(true);
+      setCurrentUser(user);
+      setLoginError('');
+      addLog('Login', `User ${user.userId} logged in.`);
+      setView('inventory');
+    } else {
+      setLoginError('Invalid User ID or Password');
+    }
+  };
+
+  const handleLogout = () => {
+    addLog('Logout', `User ${currentUser?.userId} logged out.`);
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setLoginForm({ userId: '', password: '' });
+    setView('inventory');
+  };
+
+  const isAdmin = currentUser?.role === 'admin';
+
+  const addLog = (action, detail) => {
+    const newLog = {
+      id: Date.now(),
+      action,
+      detail,
+      timestamp: new Date()
+    };
+    setLogs(prev => [newLog, ...prev]);
+  };
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredLogs = useMemo(() => {
+    const now = new Date();
+    return logs.filter(log => {
+      const logDate = new Date(log.timestamp);
+      if (auditFilter === 'today') {
+        return logDate.toDateString() === now.toDateString();
+      }
+      if (auditFilter === 'week') {
+        const weekAgo = new Date().setDate(now.getDate() - 7);
+        return logDate >= weekAgo;
+      }
+      if (auditFilter === 'month') {
+        const monthAgo = new Date().setMonth(now.getMonth() - 1);
+        return logDate >= monthAgo;
+      }
+      return true;
+    });
+  }, [logs, auditFilter]);
+
+  const sortedAndFilteredColumns = useMemo(() => {
+    const filtered = columns.filter(c => 
+      c.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      c.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.partNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.serialNo.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return [...filtered].sort((a, b) => {
+      let valA = a[sortConfig.key] || '';
+      let valB = b[sortConfig.key] || '';
+      
+      if (sortConfig.key === 'details') {
+        valA = a.description;
+        valB = b.description;
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [columns, searchTerm, sortConfig]);
+
+  // COLUMN CRUD
+  const registerColumn = () => {
+    if (!newCol.id || !newCol.desc) return;
+    const col = {
+      id: newCol.id,
+      description: newCol.desc,
+      partNo: newCol.part,
+      serialNo: newCol.serial,
+      status: 'Available',
+      issuedTo: null,
+      issuedDate: null,
+      expectedReturn: null,
+      issuedBy: null
+    };
+    setColumns([...columns, col]);
+    addLog('Register Column', `ID: ${col.id} added.`);
+    setNewCol({ id: '', desc: '', part: '', serial: '' });
+    setView('inventory');
+  };
+
+  const updateColumn = () => {
+    setColumns(columns.map(c => c.id === editColModal.id ? { 
+      ...c, 
+      description: editColModal.description,
+      partNo: editColModal.partNo,
+      serialNo: editColModal.serialNo
+    } : c));
+    addLog('Update Column', `Asset ${editColModal.id} details updated.`);
+    setEditColModal(null);
+  };
+
+  const deleteColumn = (id) => {
+    setConfirmModal({
+      title: 'Delete Asset',
+      message: `Permanently remove ${id} from inventory? This action cannot be undone.`,
+      onConfirm: () => {
+        setColumns(columns.filter(c => c.id !== id));
+        addLog('Delete Column', `Asset ${id} deleted.`);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const issueColumn = () => {
+    if (!issueData.colId || !issueData.userId) return;
+    setColumns(columns.map(c => {
+      if (c.id === issueData.colId) {
+        return {
+          ...c,
+          status: 'Issued',
+          issuedTo: issueData.userId,
+          issuedDate: issueData.issuedDate,
+          expectedReturn: issueData.returnDate,
+          issuedBy: currentUser.userId
+        };
+      }
+      return c;
+    }));
+    addLog('Issuance', `Column ${issueData.colId} issued to ${issueData.userId} by ${currentUser.userId}`);
+    setIssueData({ colId: '', userId: '', issuedDate: new Date().toISOString().split('T')[0], returnDate: '' });
+    setView('inventory');
+  };
+
+  const returnColumn = (colId) => {
+    setConfirmModal({
+      title: 'Confirm Return',
+      message: `Mark column ${colId} as returned to inventory?`,
+      onConfirm: () => {
+        setColumns(columns.map(c => {
+          if (c.id === colId) {
+            return { ...c, status: 'Available', issuedTo: null, issuedDate: null, expectedReturn: null, issuedBy: null };
+          }
+          return c;
+        }));
+        addLog('Return', `Column ${colId} returned.`);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  // USER CRUD
+  const registerUser = () => {
+    if (!newUser.id || !newUser.name || !newUser.pass) return;
+    setUsers([...users, { userId: newUser.id, userName: newUser.name, password: newUser.pass, role: 'user' }]);
+    addLog('Register User', `User ID: ${newUser.id} registered.`);
+    setNewUser({ id: '', name: '', pass: '' });
+  };
+
+  const handleResetPassword = () => {
+    if (!resetPassValue) return;
+    setUsers(users.map(u => u.userId === resetPasswordModal.userId ? { ...u, password: resetPassValue } : u));
+    addLog('Password Reset', `Password for user ${resetPasswordModal.userId} updated.`);
+    setResetPasswordModal(null);
+    setResetPassValue('');
+  };
+
+  const deleteUser = (userId) => {
+    if (userId === currentUser.userId) return;
+    setConfirmModal({
+      title: 'Delete User',
+      message: `Are you sure you want to delete user ${userId}?`,
+      onConfirm: () => {
+        setUsers(users.filter(u => u.userId !== userId));
+        addLog('Delete User', `User ${userId} removed.`);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const printInventoryReport = () => {
+    const printWindow = window.open('', '_blank');
+    const rows = columns.map(c => `
+      <tr style="font-size: 10px; border-bottom: 1px solid #eee;">
+        <td style="padding: 10px; font-weight: bold;">${c.id}</td>
+        <td style="padding: 10px;">
+          <div style="font-weight: bold; color: #333;">${c.description}</div>
+          <div style="font-size: 8px; color: #666;">PN: ${c.partNo} | SN: ${c.serialNo}</div>
+        </td>
+        <td style="padding: 10px; text-transform: uppercase; font-weight: 800; color: ${c.status === 'Available' ? '#059669' : '#d97706'}">${c.status}</td>
+        <td style="padding: 10px;">${c.issuedTo || '-'}</td>
+        <td style="padding: 10px; color: #475569; font-weight: 600;">${c.issuedBy || '-'}</td>
+        <td style="padding: 10px;">${c.issuedDate || '-'}</td>
+        <td style="padding: 10px;">${c.expectedReturn || '-'}</td>
+      </tr>
+    `).join('');
+    
+    generatePrintContent(printWindow, 'Inventory Master Report', rows, `
+      <tr>
+        <th>Asset ID</th>
+        <th>Specifications</th>
+        <th>Status</th>
+        <th>Issued To</th>
+        <th>Issued By</th>
+        <th>Issue Date</th>
+        <th>Return Due</th>
+      </tr>
+    `);
+  };
+
+  const printAuditReport = () => {
+    const printWindow = window.open('', '_blank');
+    const intervalLabel = auditFilter === 'all' ? 'Complete History' : auditFilter === 'today' ? 'Today Only' : auditFilter === 'week' ? 'Last 7 Days' : 'Last 30 Days';
+    
+    const rows = filteredLogs.map(log => `
+      <tr style="font-size: 10px; border-bottom: 1px solid #eee;">
+        <td style="padding: 10px; font-weight: bold; color: #065f46;">${log.action}</td>
+        <td style="padding: 10px;">${log.detail}</td>
+        <td style="padding: 10px; color: #64748b; font-family: monospace;">${new Date(log.timestamp).toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    generatePrintContent(printWindow, `Audit Log Report (${intervalLabel})`, rows, `
+      <tr>
+        <th>Action</th>
+        <th>Details</th>
+        <th>Timestamp</th>
+      </tr>
+    `);
+  };
+
+  const generatePrintContent = (win, title, rows, headers) => {
+    win.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #1e293b; }
+            .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 4px solid #065f46; padding-bottom: 20px; margin-bottom: 30px; }
+            h1 { margin: 0; text-transform: uppercase; font-weight: 900; color: #065f46; letter-spacing: -1px; }
+            .meta { font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; }
+            table { width: 100%; border-collapse: collapse; }
+            th { text-align: left; background: #f8fafc; padding: 12px 10px; font-size: 9px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1>${title}</h1>
+              <div class="meta">Anthem Bioscience Asset Tracking System</div>
+            </div>
+            <div class="meta" style="text-align: right;">Generated By: ${currentUser.userName}<br/>Date: ${new Date().toLocaleString()}</div>
+          </div>
+          <table>
+            <thead>${headers}</thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div style="margin-top: 50px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+            Confidential Internal Document - Unauthorized copying is prohibited.
+          </div>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  };
+
+  const togglePassVisibility = (uid) => setVisiblePasswords(p => ({ ...p, [uid]: !p[uid] }));
+
+  const SortIcon = ({ colKey }) => {
+    if (sortConfig.key !== colKey) return <ChevronDown size={14} className="opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={14} className="text-emerald-600" /> : <ChevronDown size={14} className="text-emerald-600" />;
+  };
+
+  // --------------------------------------------------------------------------
+  // UI
+  // --------------------------------------------------------------------------
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="bg-emerald-700 p-8 text-center text-white">
+            <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm"><Package size={32} /></div>
+            <h1 className="text-xl font-black uppercase">ANTHEM Bioscience</h1>
+            <p className="text-emerald-200 text-xs font-bold uppercase mt-1">Inventory Management System</p>
+          </div>
+          <form onSubmit={handleLogin} className="p-8 space-y-5">
+            {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold border border-red-100">{loginError}</div>}
+            <input type="text" placeholder="User ID" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none" value={loginForm.userId} onChange={(e) => setLoginForm({...loginForm, userId: e.target.value})} />
+            <input type="password" placeholder="Password" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none" value={loginForm.password} onChange={(e) => setLoginForm({...loginForm, password: e.target.value})} />
+            <button type="submit" className="w-full py-4 bg-emerald-700 text-white rounded-2xl font-black uppercase text-sm shadow-lg">Sign In</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-24">
+      {/* GLOBAL MODALS */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="text-red-600 mb-4"><AlertTriangle size={32} /></div>
+            <h3 className="font-black text-slate-800 text-lg mb-2">{confirmModal.title}</h3>
+            <p className="text-slate-500 text-sm mb-6 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-500">Cancel</button>
+              <button onClick={confirmModal.onConfirm} className="flex-1 py-3 bg-red-600 rounded-xl font-bold text-white shadow-lg shadow-red-100">Proceed</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editColModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl animate-in slide-in-from-bottom-8 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-black text-slate-800 uppercase tracking-tight">Edit Asset: {editColModal.id}</h3>
+              <button onClick={() => setEditColModal(null)}><X size={20} className="text-slate-400" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Description</label>
+                <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mt-1" value={editColModal.description} onChange={e => setEditColModal({...editColModal, description: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Part No</label>
+                  <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mt-1" value={editColModal.partNo} onChange={e => setEditColModal({...editColModal, partNo: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Serial No</label>
+                  <input className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mt-1" value={editColModal.serialNo} onChange={e => setEditColModal({...editColModal, serialNo: e.target.value})} />
+                </div>
+              </div>
+              <button onClick={updateColumn} className="w-full py-4 bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs mt-4 tracking-widest flex items-center justify-center gap-2">
+                <Check size={18} /> Update Asset Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetPasswordModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl">
+            <h3 className="font-black text-slate-800 uppercase mb-4">Reset Password: {resetPasswordModal.userName}</h3>
+            <input type="text" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mb-4" placeholder="New Password" value={resetPassValue} onChange={(e) => setResetPassValue(e.target.value)} />
+            <div className="flex gap-3">
+              <button onClick={() => setResetPasswordModal(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-500 uppercase text-xs tracking-widest">Abort</button>
+              <button onClick={handleResetPassword} className="flex-1 py-3 bg-amber-600 rounded-xl font-bold text-white shadow-lg uppercase text-xs tracking-widest">Update</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-white border-b sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-sm">
+        <h1 className="text-lg font-black flex items-center gap-2 text-emerald-800">
+          <div className="bg-emerald-100 p-1.5 rounded-lg text-emerald-700"><Package size={20} /></div>
+          Anthem Column Manager
+        </h1>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+             <div className="text-xs font-bold text-slate-800">{currentUser.userName}</div>
+             <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{currentUser.role}</div>
+          </div>
+          <button onClick={handleLogout} className="p-2.5 bg-slate-100 rounded-xl text-slate-600 hover:text-red-600 transition-colors"><LogOut size={18} /></button>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto p-4 space-y-6 mt-4">
+        
+        {view === 'inventory' && (
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row justify-between gap-4 items-center px-2">
+              <h2 className="text-2xl font-black text-slate-800">Assets Inventory</h2>
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input type="text" placeholder="Search Columns..." className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-emerald-500 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200">
+                    <th 
+                      onClick={() => handleSort('id')} 
+                      className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-emerald-700 transition-colors group select-none"
+                    >
+                      <div className="flex items-center gap-2">ID <SortIcon colKey="id" /></div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('details')} 
+                      className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-emerald-700 transition-colors group select-none"
+                    >
+                      <div className="flex items-center gap-2">Details & Specifications <SortIcon colKey="details" /></div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('status')} 
+                      className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-emerald-700 transition-colors group select-none"
+                    >
+                      <div className="flex items-center gap-2">Status <SortIcon colKey="status" /></div>
+                    </th>
+                    <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sortedAndFilteredColumns.map(col => (
+                    <tr key={col.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-5"><span className="font-black text-slate-900 bg-slate-100 px-2 py-1 rounded text-xs">{col.id}</span></td>
+                      <td className="p-5">
+                        <div className="font-bold text-slate-800 text-sm mb-1">{col.description}</div>
+                        <div className="flex gap-2">
+                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 rounded">PN: {col.partNo}</span>
+                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 rounded">SN: {col.serialNo}</span>
+                        </div>
+                      </td>
+                      <td className="p-5">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase ${col.status === 'Available' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {col.status}
+                        </span>
+                        {col.status === 'Issued' && <div className="text-[10px] mt-1 font-bold text-slate-400 truncate max-w-[120px]">{col.issuedTo}</div>}
+                      </td>
+                      <td className="p-5">
+                        <div className="flex items-center justify-end gap-2">
+                          {isAdmin && (
+                            <>
+                              <button onClick={() => setEditColModal(col)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"><Edit3 size={16}/></button>
+                              <button onClick={() => deleteColumn(col.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                              <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                            </>
+                          )}
+                          {col.status === 'Available' ? (
+                            <button onClick={() => { setIssueData({...issueData, colId: col.id}); setView('issue-form'); }} className="bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-800 shadow-md shadow-emerald-100">
+                              <ExternalLink size={14}/> Issue
+                            </button>
+                          ) : (
+                            <button onClick={() => returnColumn(col.id)} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-900 shadow-md">
+                              <RotateCcw size={14}/> Return
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {view === 'issue-form' && (
+          <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 shadow-xl border relative">
+            <div className="absolute top-0 left-0 right-0 h-2 bg-emerald-600 rounded-t-3xl"></div>
+            <div className="flex justify-between mb-8">
+              <h2 className="text-xl font-black uppercase tracking-tight">Issuance Protocol</h2>
+              <button onClick={() => setView('inventory')}><X size={24}/></button>
+            </div>
+            <div className="space-y-6">
+              <div className="p-4 bg-slate-50 border rounded-2xl font-bold flex justify-between items-center">
+                <span className="text-slate-400 uppercase text-xs">Asset Target:</span>
+                <span className="text-emerald-700">{issueData.colId}</span>
+              </div>
+              <input type="text" placeholder="Personnel Full Name" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={issueData.userId} onChange={(e) => setIssueData({...issueData, userId: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Issue Date</label>
+                  <input type="date" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mt-1" value={issueData.issuedDate} onChange={e => setIssueData({...issueData, issuedDate: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Expected Return</label>
+                  <input type="date" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold mt-1" onChange={e => setIssueData({...issueData, returnDate: e.target.value})} />
+                </div>
+              </div>
+              <button onClick={issueColumn} disabled={!issueData.userId} className="w-full py-4 bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-widest disabled:opacity-50">Finalize Issuance</button>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <>
+            {view === 'admin-columns' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-3xl p-8 border shadow-sm">
+                  <h2 className="text-xl font-black uppercase mb-6 flex items-center gap-2"><PlusCircle className="text-emerald-600"/> New Registration</h2>
+                  <div className="space-y-4">
+                    <input placeholder="Asset ID (COL-XXX)" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newCol.id} onChange={e => setNewCol({...newCol, id: e.target.value})} />
+                    <input placeholder="Description" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newCol.desc} onChange={e => setNewCol({...newCol, desc: e.target.value})} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <input placeholder="Part No" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newCol.part} onChange={e => setNewCol({...newCol, part: e.target.value})} />
+                      <input placeholder="Serial No" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newCol.serial} onChange={e => setNewCol({...newCol, serial: e.target.value})} />
+                    </div>
+                    <button onClick={registerColumn} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs mt-2">Add to Stock</button>
+                  </div>
+                </div>
+                <div className="bg-white rounded-3xl p-8 border shadow-sm flex flex-col items-center justify-center text-center">
+                  <Printer size={48} className="text-slate-200 mb-4" />
+                  <h2 className="text-lg font-black uppercase mb-2">Inventory Ledger</h2>
+                  <p className="text-xs text-slate-400 mb-8 max-w-xs">Generate a timestamped master report including all issued dates and personnel assignments.</p>
+                  <button onClick={printInventoryReport} className="w-full py-4 bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-100">
+                    <FileText size={18} /> Generate Master Report
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {view === 'admin-users' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-1 bg-white rounded-3xl p-8 border shadow-sm">
+                  <h2 className="text-xl font-black uppercase mb-6">Staff Access</h2>
+                  <div className="space-y-4">
+                    <input placeholder="Name" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+                    <input placeholder="User ID" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newUser.id} onChange={e => setNewUser({...newUser, id: e.target.value})} />
+                    <input type="password" placeholder="Key" className="w-full p-4 bg-slate-50 border rounded-2xl font-bold" value={newUser.pass} onChange={e => setNewUser({...newUser, pass: e.target.value})} />
+                    <button onClick={registerUser} className="w-full py-4 bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Create Account</button>
+                  </div>
+                </div>
+                <div className="md:col-span-2 space-y-4">
+                   <h3 className="font-black text-slate-400 text-[10px] uppercase px-2 tracking-widest">Verified Personnel</h3>
+                   <div className="bg-white rounded-3xl border divide-y divide-slate-100 overflow-hidden shadow-sm">
+                     {users.map(u => (
+                       <div key={u.userId} className="p-5 flex items-center justify-between group">
+                         <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-400">{u.userName.charAt(0)}</div>
+                           <div>
+                             <div className="font-bold text-sm">{u.userName}</div>
+                             <div className="text-[10px] text-slate-400 font-black uppercase">{u.userId} â¢ {u.role}</div>
+                             <div className="mt-1 flex items-center gap-2">
+                               <span className="text-[10px] font-mono text-slate-500">{visiblePasswords[u.userId] ? u.password : "â¢â¢â¢â¢â¢â¢â¢â¢"}</span>
+                               <button onClick={() => togglePassVisibility(u.userId)} className="text-slate-300 hover:text-emerald-600"><Eye size={12}/></button>
+                             </div>
+                           </div>
+                         </div>
+                         <div className="flex gap-2">
+                           <button onClick={() => setResetPasswordModal(u)} className="p-2 text-slate-300 hover:text-amber-600 transition-colors"><RefreshCw size={18}/></button>
+                           {u.userId !== currentUser.userId && <button onClick={() => deleteUser(u.userId)} className="p-2 text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={18}/></button>}
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {view === 'logs' && (
+              <div className="space-y-4">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 px-2">
+                  <h2 className="text-xl font-black uppercase">Audit Trail</h2>
+                  
+                  {/* TIME INTERVAL SELECTOR */}
+                  <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border shadow-sm">
+                    {[
+                      { id: 'all', label: 'All Time' },
+                      { id: 'today', label: 'Today' },
+                      { id: 'week', label: '7 Days' },
+                      { id: 'month', label: '30 Days' },
+                    ].map(int => (
+                      <button 
+                        key={int.id}
+                        onClick={() => setAuditFilter(int.id)}
+                        className={`px-4 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${auditFilter === int.id ? 'bg-emerald-700 text-white shadow-md shadow-emerald-100' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        {int.label}
+                      </button>
+                    ))}
+                    <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                    <button 
+                      onClick={printAuditReport}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase rounded-xl hover:bg-black transition-colors"
+                    >
+                      <Printer size={14}/> Print
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl border divide-y overflow-hidden shadow-sm">
+                  {filteredLogs.length > 0 ? filteredLogs.map(log => (
+                    <div key={log.id} className="p-5 flex justify-between items-center text-sm group hover:bg-slate-50 transition-colors">
+                      <div className="flex gap-3 items-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                        <div>
+                          <span className="font-black text-[10px] text-emerald-700 uppercase tracking-widest block">{log.action}</span>
+                          <span className="text-slate-600 font-medium">{log.detail}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CalendarDays size={14} className="text-slate-300" />
+                        <span className="text-[10px] font-mono text-slate-400 font-bold">{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="p-20 text-center text-slate-400 font-black uppercase tracking-widest text-xs italic">
+                      No logs found for this interval
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t h-20 flex items-center justify-around px-6 z-40 shadow-lg">
+        <button onClick={() => setView('inventory')} className={`flex flex-col items-center gap-1 transition-all ${view === 'inventory' || view === 'issue-form' ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
+          <Package size={22} />
+          <span className="text-[10px] font-black uppercase">Stock</span>
+        </button>
+        {isAdmin && (
+          <>
+            <button onClick={() => setView('admin-columns')} className={`flex flex-col items-center gap-1 transition-all ${view === 'admin-columns' ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
+              <PlusCircle size={22} />
+              <span className="text-[10px] font-black uppercase">Admin</span>
+            </button>
+            <button onClick={() => setView('admin-users')} className={`flex flex-col items-center gap-1 transition-all ${view === 'admin-users' ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
+              <Users size={22} />
+              <span className="text-[10px] font-black uppercase">Staff</span>
+            </button>
+            <button onClick={() => setView('logs')} className={`flex flex-col items-center gap-1 transition-all ${view === 'logs' ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
+              <History size={22} />
+              <span className="text-[10px] font-black uppercase">Audit</span>
+            </button>
+          </>
+        )}
+      </nav>
+    </div>
+  );
+}
